@@ -1,0 +1,4 @@
+TRAIN_IMAGES_PATH=C:/Users/Sarp/Desktop/uod_final_ver/Dataset/RUOD/train
+TRAIN_ANNOTATIONS_PATH=/Users/Sarp/Desktop/uod_final_ver/Dataset/RUOD/annotations_json/instances_train.json
+TEST_IMAGES_PATH=/Users/Sarp/Desktop/uod_final_ver/Dataset/RUOD/test
+TEST_ANNOTATIONS_PATH=/Users/Sarp/Desktop/uod_final_ver/Dataset/RUOD/annotations_json/instances_test.json
