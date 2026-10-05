@@ -1,0 +1,13 @@
+# Versions below are the ones the code was checked against (Python 3.12.2).
+torch>=2.14.1
+torchvision>=0.29.1
+torchmetrics>=1.9.0
+numpy>=2.5.3
+pillow>=12.3.0
+matplotlib>=3.11.2
+pycocotools>=2.0.11
+wandb>=0.30.0
+
+# Only needed for TOODHead.py and modules/Pipeline.py (the detection variant).
+# Not installed or tested here; main.py does not import them.
+# mmcv
