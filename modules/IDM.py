@@ -34,7 +34,7 @@ class IDM(nn.Module):
         ])
 
         # Debug helper
-        self.debugger = Debug()
+        self.debugger = Debug(enabled=True)
 
     def _check_submodule_params(self, module: nn.Module, module_name: str, debug: bool):
         """
@@ -45,12 +45,13 @@ class IDM(nn.Module):
             for name, param in module.named_parameters():
                 self.debugger.debug_tensor(param, desc=f"[IDM] {module_name} param '{name}'")
 
-    def forward(self, x, debug=True):
+    def forward(self, x, debug=False):
         """
         Forward pass for IDM.
         Args:
             x: Input tensor of shape (N, 3, H, W), or a list of images.
-            debug (bool): Whether to print debug info and check for NaNs at each step.
+            debug (bool): Print debug info and check for NaNs at each step (default False;
+                the underlying Debug helper also needs enabled=True or UOD_DEBUG=1).
         Returns:
             A list of three tensors, each shape (N, 1, H, W).
         """

@@ -1,3 +1,5 @@
+import os
+
 import torch
 
 class Debug:
@@ -7,13 +9,19 @@ class Debug:
     exception when NaNs are found.
     """
 
-    def __init__(self, exit_on_nan: bool = False):
+    def __init__(self, exit_on_nan: bool = False, enabled: bool = None):
         """
         Args:
             exit_on_nan (bool): If True, raise RuntimeError when NaNs are detected.
                                 Otherwise, just print a debug warning.
+            enabled (bool): Turn the checks on. Defaults to the UOD_DEBUG environment
+                            variable (off when unset), so normal runs print nothing and
+                            do no NaN checks.
         """
         self.exit_on_nan = exit_on_nan
+        if enabled is None:
+            enabled = os.environ.get("UOD_DEBUG", "0").lower() in ("1", "true", "yes")
+        self.enabled = enabled
 
     def debug_tensor(self, tensor_or_tensors, desc="tensor"):
         """
@@ -24,6 +32,8 @@ class Debug:
                 The tensor(s) to inspect.
             desc (str): A descriptor/name for logging.
         """
+        if not self.enabled:
+            return
         if isinstance(tensor_or_tensors, (list, tuple)):
             # Handle multiple tensors
             for i, t in enumerate(tensor_or_tensors):

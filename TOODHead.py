@@ -1,11 +1,26 @@
 # TOODHead.py
-# Fully implemented TOOD (Task-Aligned One-Stage Object Detection Head)
-# Ref: "TOOD: Task-Aligned One-Stage Object Detection" (ICCV 2021)
-#      Feng et al. https://arxiv.org/abs/2108.07755
-# Using mmcv's deform_conv2d for deformable sampling.
-# This version includes full classification + regression heads, label assignment, and the needed losses.
+# TOOD-style detection head (unfinished). Not used by main.py.
+#
+# Copyright (c) OpenMMLab (MMDetection), Apache License 2.0
+# https://github.com/open-mmlab/mmdetection
+#
+# This file is derived from MMDetection 3.3.0 mmdet/models/dense_heads/tood_head.py, which
+# implements "TOOD: Task-aligned One-stage Object Detection" (Feng et al., ICCV 2021,
+# https://arxiv.org/abs/2108.07755). The derivation is not limited to TaskDecomposition: the
+# head layout (stacked inter_convs, cls_decomp and reg_decomp, the tood_cls and tood_reg
+# convs, cls_prob_module), the weight initialisation values, and the cls_score = sqrt(sigmoid
+# * sigmoid) alignment follow that file.
+#
+# Modified here (Sarp Vulas, 2025): mmcv ConvModule replaced by nn.Conv2d, the head is
+# simplified to plain anchor-based outputs, and deformable sampling calls
+# mmcv.ops.deform_conv2d directly.
+#
+# What is NOT implemented: task-aligned label assignment (TAL) and the TOOD losses.
+# Known problem: the regression offset module is created inside forward() with random
+# weights on every call, so it is never registered and cannot be trained.
 
 import math
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -109,14 +124,15 @@ class TaskDecomposition(nn.Module):
 # ------------------------------------------
 class TOODHead(nn.Module):
     """
-    TOOD: Task-Aligned One-Stage Object Detection Head
-    Reproduces the paper fully:
-      - stacked conv layers
-      - task decomposition for cls & reg
-      - classification probability & offset modules
-      - deformable sampling
-      - anchor-based or anchor-free label assignment
-      - final loss computations
+    TOOD-style head, adapted from MMDetection 3.3.0 tood_head.py (Apache-2.0).
+
+    Implemented: stacked conv layers, task decomposition (layer attention) for the cls and
+    reg branches, the classification alignment map (cls_prob_module), and a deformable
+    sampling step on the regression output.
+
+    Not implemented: task-aligned label assignment and the TOOD losses. The regression
+    offset module is rebuilt with random weights on every forward call. The head only
+    produces predictions; it cannot be trained as written.
     """
 
     def __init__(self,
@@ -230,7 +246,13 @@ class TOODHead(nn.Module):
 
         return out
 
+    @staticmethod
+    def _debug():
+        return os.environ.get("UOD_DEBUG", "0").lower() in ("1", "true", "yes")
+
     def check_for_nans(self, tensor, name="tensor", exit_on_nan=True):
+        if not self._debug():
+            return
         if torch.isnan(tensor).any():
             print(f"[DEBUG] Detected NaNs in {name}, min={tensor.min()}, max={tensor.max()}")
             if exit_on_nan:
@@ -269,7 +291,7 @@ class TOODHead(nn.Module):
             cls_feat = self.cls_decomp(feat_cat, avg_feat)
             self.check_for_nans(cls_feat, name=f"cls_feat[{idx}]")
             reg_feat = self.reg_decomp(feat_cat, avg_feat)
-            self.check_for_nans(cls_feat, name=f"reg_feat[{idx}]")
+            self.check_for_nans(reg_feat, name=f"reg_feat[{idx}]")
 
             # 4) Classification
             cls_logits = self.tood_cls(cls_feat)
@@ -305,10 +327,12 @@ class TOODHead(nn.Module):
             reg_out = self.deform_sampling(reg_raw, offset, groups)
             self.check_for_nans(reg_out, name=f"reg_out[{idx}]")
             reg_preds.append(reg_out)
-            print(f"Regression output shape: {reg_out.shape}")
+            if self._debug():
+                print(f"Regression output shape: {reg_out.shape}")
 
-        print(f"\nFinal classification predictions: {len(cls_scores)} tensors")
-        print(f"Final regression predictions: {len(reg_preds)} tensors")
+        if self._debug():
+            print(f"\nFinal classification predictions: {len(cls_scores)} tensors")
+            print(f"Final regression predictions: {len(reg_preds)} tensors")
 
         return cls_scores, reg_preds
 
