@@ -16,10 +16,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install CPU PyTorch and pytest
+      - name: Install CPU PyTorch, pytest, wandb and pycocotools
         run: |
           python -m pip install --upgrade pip
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install pytest
+          pip install pytest wandb pycocotools
       - name: Run tests
         run: python -m pytest -q
