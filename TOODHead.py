@@ -20,6 +20,7 @@
 # weights on every call, so it is never registered and cannot be trained.
 
 import math
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -245,7 +246,13 @@ class TOODHead(nn.Module):
 
         return out
 
+    @staticmethod
+    def _debug():
+        return os.environ.get("UOD_DEBUG", "0").lower() in ("1", "true", "yes")
+
     def check_for_nans(self, tensor, name="tensor", exit_on_nan=True):
+        if not self._debug():
+            return
         if torch.isnan(tensor).any():
             print(f"[DEBUG] Detected NaNs in {name}, min={tensor.min()}, max={tensor.max()}")
             if exit_on_nan:
@@ -320,10 +327,12 @@ class TOODHead(nn.Module):
             reg_out = self.deform_sampling(reg_raw, offset, groups)
             self.check_for_nans(reg_out, name=f"reg_out[{idx}]")
             reg_preds.append(reg_out)
-            print(f"Regression output shape: {reg_out.shape}")
+            if self._debug():
+                print(f"Regression output shape: {reg_out.shape}")
 
-        print(f"\nFinal classification predictions: {len(cls_scores)} tensors")
-        print(f"Final regression predictions: {len(reg_preds)} tensors")
+        if self._debug():
+            print(f"\nFinal classification predictions: {len(cls_scores)} tensors")
+            print(f"Final regression predictions: {len(reg_preds)} tensors")
 
         return cls_scores, reg_preds
 
