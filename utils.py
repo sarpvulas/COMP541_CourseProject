@@ -163,20 +163,20 @@ def load_data(batch_size=BATCH_SIZE, subset_size=500, use_subsets=True):
 # -------------------------------------------------------------------
 def save_model(model, epoch, accuracy, best_accuracy, save_path="models/checkpoints/best_model_epoch_{}.pth"):
     """
-    Save the model if validation/test accuracy improves.
+    Save the model if the accuracy improves (a strictly higher value, so 0 never saves).
 
     Args:
         model:         The PyTorch model
         epoch:         Current epoch number
-        accuracy:      Current val/test AP
-        best_accuracy: The best AP so far
+        accuracy:      Current top-1 accuracy on the evaluation split
+        best_accuracy: The best accuracy so far
         save_path:     Path pattern for saving
                        (e.g., "models/checkpoints/best_model_epoch_{}.pth")
     Returns:
         Possibly updated best_accuracy
     """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    if accuracy > best_accuracy or accuracy == 0:
+    if accuracy > best_accuracy:
         final_save_path = save_path.format(epoch)
         torch.save(model.state_dict(), final_save_path)
         print(f"Model saved at epoch {epoch} with accuracy: {accuracy:.4f}")
