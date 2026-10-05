@@ -10,10 +10,7 @@ from modules.config import (
     TEST_IMAGES_PATH,
     TEST_ANNOTATIONS_PATH,
     BATCH_SIZE,
-    IMAGE_SIZE,
 )
-from torchvision.transforms import Compose, ToTensor
-from torchvision.transforms import CenterCrop
 
 # -------------------------------------------------------------------
 # 1) CocoDetectionWithFilename
@@ -122,14 +119,12 @@ def load_data(batch_size=BATCH_SIZE, subset_size=500, use_subsets=True):
         min_size=512  # <--- filter out images smaller than 512
     )
 
-    transform = Compose([
-        CenterCrop(IMAGE_SIZE),
-        ToTensor()
-    ])
+    # Images are cropped later by modules/crop.py, together with their boxes,
+    # so that train and eval derive the label from the same crop.
     test_dataset = CocoDetectionWithFilename(
         root=TEST_IMAGES_PATH,
         annFile=TEST_ANNOTATIONS_PATH,
-        transform=transform,
+        transform=None,
         min_size=512  # <--- same for test
     )
 
