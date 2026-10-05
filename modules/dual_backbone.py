@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torchvision.models import resnet50, ResNet50_Weights
 
+from modules.normalize import ImageNetNormalize
+
 
 class DualResNet50(nn.Module):
     """
@@ -11,10 +13,16 @@ class DualResNet50(nn.Module):
       - branch_rgb (for original images)
       - branch_gray (for edge-enhanced grayscale)
     You extract the intermediate layers the same way for both.
+
+    The RGB branch applies ImageNet mean/std normalisation to its input (its weights are
+    ImageNet-pretrained), so callers pass RGB in [0, 1]. The edge branch input (Laplacian
+    features) is not an image with ImageNet statistics and is passed through unchanged.
+    Because it lives here, training and evaluation normalise identically.
     """
 
     def __init__(self):
         super(DualResNet50, self).__init__()
+        self.normalize = ImageNetNormalize()
 
         # Branch 1: original RGB
         resnet1 = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
@@ -44,8 +52,8 @@ class DualResNet50(nn.Module):
         self.gray_layer4 = resnet2.layer4
 
     def forward_rgb(self, x):
-        # For the original RGB images
-        x = self.rgb_conv1(x)
+        # For the original RGB images (in [0, 1]); normalise as the pretrained weights expect
+        x = self.rgb_conv1(self.normalize(x))
         #print("[debug] after rgb_conv1:", x.shape)
         f1 = self.rgb_layer1(x)
         #print("[debug] after layer1:", f1.shape)
