@@ -11,13 +11,13 @@
 # convs, cls_prob_module), the weight initialisation values, and the cls_score = sqrt(sigmoid
 # * sigmoid) alignment follow that file.
 #
-# Modified here (Sarp Vulas, 2025): mmcv ConvModule replaced by nn.Conv2d, the head is
+# Modified in this course project (2025): mmcv ConvModule replaced by nn.Conv2d, the head is
 # simplified to plain anchor-based outputs, and deformable sampling calls
-# mmcv.ops.deform_conv2d directly.
+# mmcv.ops.deform_conv2d directly (torchvision.ops.deform_conv2d when mmcv is missing).
 #
 # What is NOT implemented: task-aligned label assignment (TAL) and the TOOD losses.
-# Known problem: the regression offset module is created inside forward() with random
-# weights on every call, so it is never registered and cannot be trained.
+# The regression offset module is created once in __init__ (it used to be rebuilt with random
+# weights on every forward call, so it was never registered and could not train).
 
 import math
 import os
@@ -25,8 +25,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import mmcv
-from mmcv.ops import deform_conv2d
+try:  # mmcv is optional: without it the torchvision op below does the same sampling
+    from mmcv.ops import deform_conv2d as _mmcv_deform_conv2d
+except ImportError:
+    _mmcv_deform_conv2d = None
+from torchvision.ops import deform_conv2d as _tv_deform_conv2d
 
 # ------------------------------------------
 # 0)  Task Decomposition
@@ -131,8 +134,9 @@ class TOODHead(nn.Module):
     sampling step on the regression output.
 
     Not implemented: task-aligned label assignment and the TOOD losses. The regression
-    offset module is rebuilt with random weights on every forward call. The head only
-    produces predictions; it cannot be trained as written.
+    head only produces predictions; there is no loss for it, so it is not trained anywhere
+    in this repository. The regression offset module (`reg_offset_module`) is a registered
+    submodule shared by all pyramid levels, initialised with std 0.001 as in MMDetection.
     """
 
     def __init__(self,
@@ -204,6 +208,15 @@ class TOODHead(nn.Module):
             nn.Conv2d(self.feat_channels // 4, 1, kernel_size=3, padding=1)
         )
 
+        # regression offsets for the deformable sampling step: 2 * 3 * 3 offsets per regression
+        # channel (the sampling uses one offset group per channel)
+        self.reg_offset_module = nn.Sequential(
+            nn.Conv2d(self.feat_channels * self.stacked_convs, self.feat_channels // 4, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(self.feat_channels // 4, 2 * 3 * 3 * self.num_anchors * 4,
+                      kernel_size=3, padding=1)
+        )
+
         # init
         self._init_weights()
 
@@ -222,6 +235,10 @@ class TOODHead(nn.Module):
                 nn.init.constant_(m.bias, 0)
         # typical bias init for ~0.01 prior prob => logit = -ln((1-0.01)/0.01)= about -4.595
         nn.init.constant_(self.cls_prob_module[-1].bias, -4.595)
+        for m in self.reg_offset_module:
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.001)
+                nn.init.constant_(m.bias, 0)
 
         # decomposition modules
         self.cls_decomp.init_weights()
@@ -242,9 +259,11 @@ class TOODHead(nn.Module):
 
         weight = x.new_ones(c, 1, 3, 3)
 
-        out = deform_conv2d(x, offset, weight, 1, 1, 1, c, c)
-
-        return out
+        if _mmcv_deform_conv2d is not None:
+            return _mmcv_deform_conv2d(x, offset, weight, 1, 1, 1, c, c)
+        # torchvision infers groups from the weight shape and offset groups from the offset
+        # channels, which gives the same depthwise sampling as the mmcv call above.
+        return _tv_deform_conv2d(x, offset, weight, padding=(1, 1))
 
     @staticmethod
     def _debug():
@@ -306,22 +325,10 @@ class TOODHead(nn.Module):
             reg_raw = self.tood_reg(reg_feat)
             self.check_for_nans(reg_raw, name=f"reg_raw[{idx}]")
 
-            # 6) Offset adjustment (dynamic for each feature map)
-            groups = reg_raw.shape[1] # Number of input channels
-            kernel_size = 3
-            offset_channels = 2 * kernel_size * kernel_size * groups
-
-            reg_offset_module = nn.Sequential(
-            nn.Conv2d(self.feat_channels * self.stacked_convs, self.feat_channels // 4, 1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(self.feat_channels // 4, offset_channels, kernel_size=3, padding=1)).to(feat.device)
-
-            offset = reg_offset_module(feat_cat)
+            # 6) Offset adjustment (registered module, shared across levels)
+            groups = reg_raw.shape[1]  # one deformable group per regression channel
+            offset = self.reg_offset_module(feat_cat)
             self.check_for_nans(offset, name=f"offset[{idx}]")
-
-            assert offset.shape[1] == offset_channels, (
-                f"Offset shape mismatch: expected {offset_channels}, got {offset.shape[1]}"
-            )
 
             # Perform deformable convolution for regression
             reg_out = self.deform_sampling(reg_raw, offset, groups)

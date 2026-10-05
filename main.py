@@ -1,99 +1,89 @@
+import argparse
+
 import wandb
 import torch
 import torch.nn as nn
 from utils import load_data
 from modules.Pipeline_OnlyClassify import FullPipeline_OnlyClassify
+from modules.seed import set_seed
 from train import train_model
 from modules.config import (
     BATCH_SIZE,
     LEARNING_RATE,
     EPOCHS,
     IMAGE_SIZE,
-    NUM_CLASSES
+    NUM_CLASSES,
+    SEED,
+    VAL_FRACTION,
+    VAL_SPLIT_SEED,
 )
 from losses import single_label_classification_loss
-import traceback
 
 
+def main(seed=None):
+    """Train on the training part, select checkpoints on validation, test once at the end."""
+    seed = SEED if seed is None else seed
+    set_seed(seed, deterministic=True)  # before the model is built, so weight initialisation is seeded too
+    print(f"Initializing the training pipeline (seed {seed})...")
+    print("Loading datasets...")
+    train_loader, val_loader, test_loader = load_data(batch_size=BATCH_SIZE, seed=seed)
+    print(f"Train: {len(train_loader)} batches, validation: {len(val_loader)}, "
+          f"test: {len(test_loader)}")
 
-def main():
+    # W&B starts after the data loaded, so a data error leaves no unfinished run.
     wandb.init(project="uod_image_classification", config={
         "batch_size": BATCH_SIZE,
         "learning_rate": LEARNING_RATE,
         "epochs": EPOCHS,
-        "image_size": IMAGE_SIZE
+        "image_size": IMAGE_SIZE,
+        "seed": seed,
+        "val_fraction": VAL_FRACTION,
+        "val_split_seed": VAL_SPLIT_SEED,
     })
-    print("Initializing the training pipeline...")
-    torch.cuda.empty_cache()
-    # Load training and testing datasets
-    print("Loading datasets...")
-    try:
-        train_loader, test_loader = load_data(batch_size=BATCH_SIZE)
-        print(f"Training loader prepared with {len(train_loader)} batches.")
-        print(f"Testing loader prepared with {len(test_loader)} batches.")
-    except Exception as e:
-        print("Error loading datasets:")
-        traceback.print_exc()
-        return
 
-    # Initialize the detection model
-    print("Initializing the FullPipeline_OnlyClassify model...")
     try:
+        print("Initializing the FullPipeline_OnlyClassify model...")
         model = FullPipeline_OnlyClassify(num_classes=NUM_CLASSES)
-        print("Model initialized successfully.")
-    except Exception as e:
-        print("Error initializing the model:")
-        traceback.print_exc()
-        return
 
-    # Move model to device
-    print(torch.cuda.is_available())
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #device = "mps"
-    print(f"Using device: {device}")
-    model.to(device)
-
-    # Optimizer
-    print("Setting up the optimizer...")
-    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+        model.to(device)
 
         if torch.cuda.device_count() > 1:
             model = nn.DataParallel(model)
-
 
         optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=LEARNING_RATE,
             weight_decay=1e-4
         )
-
         print(f"Optimizer configured: {optimizer}")
-    except Exception as e:
-        print("Error setting up the optimizer:")
-        traceback.print_exc()
-        return
 
-    best_val_accuracy = 0.0
-    print("Commencing training...")
-    try:
-        best_val_accuracy = train_model(
+        print("Commencing training...")
+        result = train_model(
             model=model,
             train_loader=train_loader,
+            val_loader=val_loader,
             test_loader=test_loader,
             optimizer=optimizer,
-            loss_fn=single_label_classification_loss,  # The revised one
+            loss_fn=single_label_classification_loss,
             device=device,
             epochs=EPOCHS,
-            best_val_accuracy=best_val_accuracy,
         )
-    except Exception as e:
-        print("An error occurred during training:")
-        traceback.print_exc()
-    else:
+        test = result["test"]
         print("Training completed successfully.")
+        print(f"Best validation accuracy: {result['best_val_accuracy']:.4f} "
+              f"(epoch {result['best_epoch']})")
+        print(f"Test accuracy (evaluated once, on the selected weights): {test['accuracy']:.4f} "
+              f"({test['correct']}/{test['total']})")
+    finally:
+        wandb.finish()
 
-    print(f"Best validation accuracy achieved: {best_val_accuracy:.4f}")
-    wandb.finish()
+    return result
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed", type=int, default=None,
+                        help="random seed (default: UOD_SEED, else 0)")
+    main(seed=parser.parse_args().seed)

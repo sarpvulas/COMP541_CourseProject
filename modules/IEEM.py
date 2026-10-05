@@ -10,8 +10,10 @@ class IEEM(nn.Module):
         #self.laplacian_filter.weight = nn.Parameter(torch.tensor(
         #    [[[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]], dtype=torch.float32).unsqueeze(0), requires_grad=False)
         
-        self.laplacian_weight = torch.tensor(
-            [[[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]], dtype=torch.float32).unsqueeze(0)
+        # Non-persistent buffer: follows .to(device) and is not saved in checkpoints.
+        self.register_buffer("laplacian_weight", torch.tensor(
+            [[[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]], dtype=torch.float32).unsqueeze(0),
+            persistent=False)
 
         # Group convolution block
         self.group_conv_block = nn.Sequential(
@@ -42,7 +44,6 @@ class IEEM(nn.Module):
         )
 
     def laplacian_filter(self, img):
-        self.laplacian_weight = self.laplacian_weight.to(img.device)
         return F.conv2d(img, self.laplacian_weight, padding=1)
 
     def forward(self, images):
@@ -76,10 +77,15 @@ class IEEM(nn.Module):
 
 
         # Fuse features
-        e_cat_final = torch.cat([f_l, e_cat], dim=1)
+        e_cat_final = torch.cat([f_l, e_cat], dim=1)  # (N, 12 + 3, H, W): f_l first
 
 
-        # Reshape to ensure each output has 1 channel
+        # Reshape to ensure each output has 1 channel.
+        # NOTE: channels 0..2 of e_cat_final are the first three channels of f_l (learned
+        # branch); the raw Laplacian channels e_cat sit at 12..14 and are never used, so
+        # e_cat does not reach the output except through f_l's input. Whether this is
+        # intended is not settled by the code or comments; behaviour is kept as is
+        # (see README, Limitations).
         enhanced_images = tuple([e_cat_final[:, i:i + 1, ...] for i in range(3)])
 
 
