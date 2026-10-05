@@ -1,3 +1,8 @@
+# Portions of this file (TaskDecomposition.forward and the layer-attention / reduction-conv
+# layout, initialisation std values) are adapted from MMDetection's
+# mmdet/models/dense_heads/tood_head.py (Copyright (c) OpenMMLab, Apache License 2.0,
+# https://github.com/open-mmlab/mmdetection), which implements the TOOD paper.
+# Modified here: mmcv ConvModule replaced by nn.Conv2d, simplified head structure.
 # TOODHead.py
 # Fully implemented TOOD (Task-Aligned One-Stage Object Detection Head)
 # Ref: "TOOD: Task-Aligned One-Stage Object Detection" (ICCV 2021)
