@@ -23,3 +23,6 @@ debug_plots/
 # Data
 Dataset/
 data/
+
+# Local dataset paths (copy modules/dataset_paths.example.txt)
+modules/dataset_paths.txt

@@ -1,0 +1,6 @@
+# Copy this file to modules/dataset_paths.txt (git-ignored) and set your own paths.
+# Expected layout: RUOD in COCO format, see README "Getting the data".
+TRAIN_IMAGES_PATH=/path/to/RUOD/train
+TRAIN_ANNOTATIONS_PATH=/path/to/RUOD/annotations_json/instances_train.json
+TEST_IMAGES_PATH=/path/to/RUOD/test
+TEST_ANNOTATIONS_PATH=/path/to/RUOD/annotations_json/instances_test.json
