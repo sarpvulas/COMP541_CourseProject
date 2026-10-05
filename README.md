@@ -80,7 +80,7 @@ cd COMP541_CourseProject
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pip install pytest
-python -m pytest -q          # 56 passed
+python -m pytest -q          # 60 passed
 ```
 
 Forward and backward pass of the classification pipeline on one random 512x512 image (downloads the ResNet-50 ImageNet weights on first run):
@@ -107,11 +107,11 @@ Optional debug switches, all off by default: `UOD_DEBUG=1` (tensor stats and NaN
 ## Reproducibility notes
 
 - Settings in `modules/config.py`: batch size 2, learning rate 1e-4, 10 epochs, AdamW with weight decay 1e-4, StepLR (step 2, gamma 0.5).
-- Seed: `python main.py --seed N` or `UOD_SEED=N` (default 0). It seeds Python, NumPy and PyTorch, the choice of the 500-image subsets, the training shuffle order, and the model's weight initialisation. In the smoke test two CPU runs with the same seed gave the same training loss.
+- Seed: `python main.py --seed N` or `UOD_SEED=N` (default 0). It seeds Python, NumPy and PyTorch, the choice of the 500-image subsets, the training shuffle order, and the model's weight initialisation; `main.py` also sets the cuDNN deterministic flags. In the smoke test two CPU runs with the same seed gave the same training loss.
 - Split: 10% of the (size-filtered) training images form the validation split, drawn with a separate fixed seed (1234), so it does not change with `--seed`. `utils.load_data` then takes a random subset of at most 500 images from each of the train, validation and test parts, and drops images smaller than 512 pixels on either side before any of this.
 - Where determinism is not guaranteed: on a GPU, some CUDA backward kernels (adaptive average pooling and the FPN's upsampling) use atomic adds, so results can differ between runs even with the same seed; `torch.use_deterministic_algorithms` is not enabled because it raises on those kernels. Multi-GPU runs (`DataParallel`) are not covered. Different PyTorch versions or hardware can change results. Only CPU repeatability was checked. `num_workers` is 0, so there is no worker-seeding issue.
 - Dependency versions used for the checks above are listed in `requirements.txt`.
-- Changes from the earlier code that alter results: ImageNet normalisation was added, checkpoints are now chosen on a validation split and the test metric is reported once, the seed is fixed by default, the offset module of the TOOD-style head is now trainable (it is not used by `main.py`), and class indices come from the sorted COCO category ids (identical for ids 1 to 10). Any numbers from the earlier code are not comparable.
+- Changes from the earlier code that alter results: ImageNet normalisation was added, checkpoints are now chosen on a validation split and the test metric is reported once, the seed is fixed by default, the offset module of the TOOD-style head is now trainable (it is not used by `main.py`), and class indices come from the sorted COCO category ids (identical for ids 1 to 10). Any numbers from the earlier code are not comparable: its checkpoints and "best" accuracies were selected on test accuracy, so they are also optimistic.
 
 ## Limitations
 
@@ -119,11 +119,12 @@ Optional debug switches, all off by default: `UOD_DEBUG=1` (tensor stats and NaN
 - The validation split is a random 10% of the training images, so images of the same scene or dive may appear in both train and validation if the dataset has such near-duplicates; this was not checked. Each split is also reduced to a 500-image subset by default.
 - `modules/IEEM.py` concatenates the 12 learned feature channels with the 3 Laplacian channels and then keeps only the first three channels of the result, which come from the learned convolution branch. The raw Laplacian channels are not in the output; they influence it only through the input of the learned branch. The code and comments do not say which reduction to 3 channels was intended, so this is documented and left unchanged, not fixed.
 - ImageNet normalisation is applied to the RGB branch only. The edge branch is fed Laplacian-derived features that have no ImageNet statistics, although its ResNet-50 is ImageNet-pretrained.
+- Fixing IEEM later will change results. The output keeps only the first three channels of the concatenation, which are `f_l` channels, so the raw Laplacian channels never reach the output directly (they only enter through the input of the learned branch). The intent of the "Fuse features" step appears to be an output that depends on the Laplacian; the open question is how to reduce the 15 channels to 3. Candidate fixes are a learned 1x1 convolution from 15 to 3 channels, or `f_l[:, :3] + e_cat`. Neither is applied here.
 - The TOOD-style head still has no label assignment or loss. Its offset module is now trainable, but nothing trains it. `modules/Pipeline.py` ran end to end in a manual check through the torchvision fallback (a 1x3x512x512 forward and backward pass, with a non-zero gradient reaching the offset module); it was not run with `mmcv` because `mmcv` was not installed.
 - `losses.detection_loss` is unused and is not a finished loss: it treats every non-positive anchor as class 0 (there is no background class) and feeds probabilities to cross-entropy as logits. Its regression term now uses the matched-pair GIoU (`giou_regression_loss`, tested). The earlier call to `torchmetrics` GIoU was checked against torchmetrics 1.9.0, where it already returned the mean of the diagonal, so it was not wrong there; it is replaced to remove the dependency on that library's behaviour. `losses.py` also keeps its own `box_iou` and `match_anchors`, which duplicate `modules/anchor_utils.py` with different default thresholds.
 - Batch size 2 with BatchNorm layers in train mode is noisy; this was not tuned or tested.
 - TAGFFM hard-codes the 512x512 feature sizes of the four ResNet stages.
-- CI was updated to install `wandb` and `pycocotools` (imported by the new tests) but the workflow has not been run on GitHub from this branch.
+- CI was updated to install `wandb` and `pycocotools` (imported by the tests) and `matplotlib` (listed in `requirements.txt`, imported lazily by the debug plot) but the workflow has not been run on GitHub from this branch.
 
 ## Relationship to COMP541-Project
 
@@ -141,4 +142,4 @@ Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). The repository 
 
 TODO(sarp): add a LinkedIn link.
 
-Hüseyin Sarp Vulaş, Dubai. MSc Computational Finance, King's College London.
+Authors: Hüseyin Sarp Vulaş and Zeynep Aydın, Koç University, COMP 541.
