@@ -263,10 +263,11 @@ def giou(pred_boxes, gt_boxes):
     inter_h = (torch.min(pred_boxes[:, 3], gt_boxes[:, 3]) - torch.max(pred_boxes[:, 1], gt_boxes[:, 1])).clamp(min=0)
     inter = inter_w * inter_h
     union = box_area(pred_boxes) + box_area(gt_boxes) - inter
-    iou = inter / union.clamp(min=1e-6)
+    eps = 1e-12  # only guards the division, so boxes with sides far below 1e-3 stay exact
+    iou = inter / (union + eps)
 
     enclose_w = torch.max(pred_boxes[:, 2], gt_boxes[:, 2]) - torch.min(pred_boxes[:, 0], gt_boxes[:, 0])
     enclose_h = torch.max(pred_boxes[:, 3], gt_boxes[:, 3]) - torch.min(pred_boxes[:, 1], gt_boxes[:, 1])
-    enclose = (enclose_w * enclose_h).clamp(min=1e-6)
+    enclose = enclose_w * enclose_h
 
-    return iou - (enclose - union) / enclose
+    return iou - (enclose - union) / (enclose + eps)
