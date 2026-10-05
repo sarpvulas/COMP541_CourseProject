@@ -44,7 +44,7 @@ flowchart LR
     G --> I[TOOD-style head: Pipeline.py, not trained]
 ```
 
-What `main.py` does: for each image it center-crops to 512x512 (`modules/crop.py`), keeps the boxes that are at least 50% inside the crop, and labels the image with the class whose remaining boxes cover the largest total area. The classification head produces per-scale class maps; they are averaged spatially and across scales, and trained with cross-entropy (the whole model is trained, not only the head). Training and evaluation use the same crop and label rule. After each epoch it computes top-1 accuracy on the test split, logs it to Weights & Biases, and saves a checkpoint to `models/checkpoints/` when accuracy improves. Images with no usable box in the crop are skipped, and the count is printed each epoch.
+What `main.py` does: for each image it center-crops to 512x512 (`modules/crop.py`), keeps the boxes that are at least 50% inside the crop, and labels the image with the class whose remaining boxes cover the largest total area. The classification head produces per-scale class maps; they are averaged spatially and across scales, and trained with cross-entropy (the whole model is trained, not only the head). Training and evaluation use the same crop and label rule. After each epoch it computes top-1 accuracy on the test split, logs it to Weights & Biases, and saves a checkpoint to `models/checkpoints/` when accuracy is strictly higher than the best so far (an accuracy of 0 never saves). Images with no usable box in the crop are skipped, and the count is printed each epoch.
 
 The TOOD-style head (`TOODHead.py`) is adapted from MMDetection 3.3.0 `tood_head.py` (Apache-2.0), which implements TOOD (Feng et al., ICCV 2021, https://arxiv.org/abs/2108.07755). The head layout, initialisation, task decomposition with layer attention and the classification alignment map come from there. Task-aligned label assignment and the TOOD losses are not implemented, and the deformable-offset module is rebuilt with random weights on every forward call, so the head cannot be trained as written.
 
@@ -95,9 +95,11 @@ loss.backward()
 EOF
 ```
 
-`python main.py` needs RUOD and a Weights & Biases login (`WANDB_MODE=disabled` turns W&B off). It has been run for one epoch on a small synthetic COCO dataset (8 train and 6 test images of 640x640, random boxes) on CPU, which only shows that the loop works; it has not been run on RUOD.
+`python main.py` needs RUOD and a Weights & Biases login (`WANDB_MODE=disabled` turns W&B off). It has not been run on RUOD.
 
-Optional debug switches, all off by default: `UOD_DEBUG=1` (print tensor stats and check for NaNs), `UOD_DETECT_ANOMALY=1`, `UOD_WANDB_WATCH=1`.
+Smoke test: `python scripts/smoke_test.py` builds a tiny synthetic COCO dataset in a temp folder (16 train and 10 test images of 640x640, flat gray, 1-3 random boxes each), runs `main.main()` for one epoch on CPU with W&B disabled, and prints the usual training and evaluation lines. In one run it printed `Avg Loss: 2.3501 over 8 batches; skipped 0 images` and `top-1 accuracy: 0.0000 (0/10)`. The data is random, so these numbers only show that the loop runs; shuffling is unseeded, so the loss varies a little between runs. It needs the ResNet-50 ImageNet weights, so it is not part of CI.
+
+Optional debug switches, all off by default: `UOD_DEBUG=1` (tensor stats and NaN checks in `modules/Debug.py` and in `TOODHead`), `UOD_DETECT_ANOMALY=1`, `UOD_WANDB_WATCH=1`. `UOD_DEBUG` alone does not make `IDM.forward` print; that also needs `debug=True` in the call.
 
 ## Reproducibility notes
 
@@ -112,7 +114,6 @@ Optional debug switches, all off by default: `UOD_DEBUG=1` (print tensor stats a
 - `modules/IEEM.py` concatenates 12 learned feature channels with the 3 Laplacian channels and then keeps only the first three channels of the result, which come from the learned convolution branch. The raw Laplacian channels are discarded, so "Laplacian edge enhancement" is only loosely accurate.
 - No ImageNet mean/std normalisation of inputs, although the backbone is ImageNet-pretrained.
 - No random seed.
-- `utils.save_model` also saves a checkpoint whenever accuracy is exactly 0.
 - The TOOD-style head has no label assignment or loss, and its offset module is rebuilt with random weights on every forward call. `modules/Pipeline.py` and `TOODHead.py` were not run because `mmcv` was not installed.
 - `losses.detection_loss` averages a pairwise GIoU matrix instead of paired boxes and is not used by `main.py`.
 - TAGFFM hard-codes the 512x512 feature sizes of the four ResNet stages.
@@ -130,6 +131,6 @@ Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). The repository 
 - ResNet-50 weights and FPN from torchvision.
 - Course project for COMP 541 Deep Learning, Koç University.
 
-TODO(sarp): confirm co-author credit (the companion repository names Zeynep Aydın as a co-author of the course project). TODO(sarp): add a LinkedIn link.
+TODO(sarp): confirm co-author credit. TODO(sarp): add a LinkedIn link.
 
 Author: Sarp Vulaş, Dubai. MSc Computational Finance, King's College London.
