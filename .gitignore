@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Training outputs
+models/
+checkpoints/
+*.pth
+*.pt
+wandb/
+visualizations_CLS/
+debug_plots/
+
+# Data
+Dataset/
+data/
