@@ -238,3 +238,35 @@ def decode_boxes(bbox_preds, anchors, means=(0.0, 0.0, 0.0, 0.0), stds=(1.0, 1.0
     decoded = torch.stack([decoded_x1, decoded_y1, decoded_x2, decoded_y2], dim=-1)
     return decoded
 
+
+
+def giou(pred_boxes, gt_boxes):
+    """
+    Element-wise Generalized IoU between paired boxes in [x1, y1, x2, y2] format.
+
+    Args:
+        pred_boxes (Tensor): Shape (N, 4).
+        gt_boxes (Tensor): Shape (N, 4).
+
+    Returns:
+        giou (Tensor): Shape (N,), GIoU of pred_boxes[i] and gt_boxes[i].
+
+    Raises:
+        ValueError: If the two inputs do not have the same shape.
+    """
+    if pred_boxes.shape != gt_boxes.shape:
+        raise ValueError(
+            f"pred_boxes and gt_boxes must have the same shape, got {tuple(pred_boxes.shape)} and {tuple(gt_boxes.shape)}"
+        )
+
+    inter_w = (torch.min(pred_boxes[:, 2], gt_boxes[:, 2]) - torch.max(pred_boxes[:, 0], gt_boxes[:, 0])).clamp(min=0)
+    inter_h = (torch.min(pred_boxes[:, 3], gt_boxes[:, 3]) - torch.max(pred_boxes[:, 1], gt_boxes[:, 1])).clamp(min=0)
+    inter = inter_w * inter_h
+    union = box_area(pred_boxes) + box_area(gt_boxes) - inter
+    iou = inter / union.clamp(min=1e-6)
+
+    enclose_w = torch.max(pred_boxes[:, 2], gt_boxes[:, 2]) - torch.min(pred_boxes[:, 0], gt_boxes[:, 0])
+    enclose_h = torch.max(pred_boxes[:, 3], gt_boxes[:, 3]) - torch.min(pred_boxes[:, 1], gt_boxes[:, 1])
+    enclose = (enclose_w * enclose_h).clamp(min=1e-6)
+
+    return iou - (enclose - union) / enclose
