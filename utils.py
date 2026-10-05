@@ -54,6 +54,12 @@ class CocoDetectionWithFilename(CocoDetection):
     def __getitem__(self, index):
         # Original getitem: returns (PIL image, ann_list), plus our added filename
         img, ann_list = super().__getitem__(index)
+        for a in ann_list:
+            if a["category_id"] not in self.cat_to_index:
+                raise ValueError(
+                    f"annotation {a.get('id')} of image {self.ids[index]} has category_id "
+                    f"{a['category_id']}, which is not in the categories list "
+                    f"{sorted(self.cat_to_index)}")
         ann_list = [dict(a, class_index=self.cat_to_index[a["category_id"]]) for a in ann_list]
 
         # Retrieve the filename

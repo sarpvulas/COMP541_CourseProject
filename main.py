@@ -23,7 +23,14 @@ from losses import single_label_classification_loss
 def main(seed=None):
     """Train on the training part, select checkpoints on validation, test once at the end."""
     seed = SEED if seed is None else seed
-    set_seed(seed)  # before the model is built, so weight initialisation is seeded too
+    set_seed(seed, deterministic=True)  # before the model is built, so weight initialisation is seeded too
+    print(f"Initializing the training pipeline (seed {seed})...")
+    print("Loading datasets...")
+    train_loader, val_loader, test_loader = load_data(batch_size=BATCH_SIZE, seed=seed)
+    print(f"Train: {len(train_loader)} batches, validation: {len(val_loader)}, "
+          f"test: {len(test_loader)}")
+
+    # W&B starts after the data loaded, so a data error leaves no unfinished run.
     wandb.init(project="uod_image_classification", config={
         "batch_size": BATCH_SIZE,
         "learning_rate": LEARNING_RATE,
@@ -33,47 +40,45 @@ def main(seed=None):
         "val_fraction": VAL_FRACTION,
         "val_split_seed": VAL_SPLIT_SEED,
     })
-    print(f"Initializing the training pipeline (seed {seed})...")
-    print("Loading datasets...")
-    train_loader, val_loader, test_loader = load_data(batch_size=BATCH_SIZE, seed=seed)
-    print(f"Train: {len(train_loader)} batches, validation: {len(val_loader)}, "
-          f"test: {len(test_loader)}")
 
-    print("Initializing the FullPipeline_OnlyClassify model...")
-    model = FullPipeline_OnlyClassify(num_classes=NUM_CLASSES)
+    try:
+        print("Initializing the FullPipeline_OnlyClassify model...")
+        model = FullPipeline_OnlyClassify(num_classes=NUM_CLASSES)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    model.to(device)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+        model.to(device)
 
-    if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model)
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=LEARNING_RATE,
-        weight_decay=1e-4
-    )
-    print(f"Optimizer configured: {optimizer}")
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=LEARNING_RATE,
+            weight_decay=1e-4
+        )
+        print(f"Optimizer configured: {optimizer}")
 
-    print("Commencing training...")
-    result = train_model(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        test_loader=test_loader,
-        optimizer=optimizer,
-        loss_fn=single_label_classification_loss,
-        device=device,
-        epochs=EPOCHS,
-    )
-    test = result["test"]
-    print("Training completed successfully.")
-    print(f"Best validation accuracy: {result['best_val_accuracy']:.4f} "
-          f"(epoch {result['best_epoch']})")
-    print(f"Test accuracy (evaluated once, on the selected weights): {test['accuracy']:.4f} "
-          f"({test['correct']}/{test['total']})")
-    wandb.finish()
+        print("Commencing training...")
+        result = train_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            optimizer=optimizer,
+            loss_fn=single_label_classification_loss,
+            device=device,
+            epochs=EPOCHS,
+        )
+        test = result["test"]
+        print("Training completed successfully.")
+        print(f"Best validation accuracy: {result['best_val_accuracy']:.4f} "
+              f"(epoch {result['best_epoch']})")
+        print(f"Test accuracy (evaluated once, on the selected weights): {test['accuracy']:.4f} "
+              f"({test['correct']}/{test['total']})")
+    finally:
+        wandb.finish()
+
     return result
 
 

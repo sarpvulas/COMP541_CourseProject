@@ -53,7 +53,11 @@ IMAGE_SIZE = (512, 512)  # (Width, Height)
 
 # Training seed: data order, subset choice, weight initialisation. Override with the
 # UOD_SEED environment variable or `python main.py --seed N`.
-SEED = int(os.environ.get("UOD_SEED", "0"))
+try:
+    SEED = int(os.environ.get("UOD_SEED", "0"))
+except ValueError:
+    raise ValueError(
+        f"UOD_SEED must be an integer, got {os.environ.get('UOD_SEED')!r}") from None
 
 # A validation split is carved from the training set. Checkpoints are selected on it; the
 # test split is evaluated once, on the selected checkpoint, at the end of training.
