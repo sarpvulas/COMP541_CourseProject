@@ -215,5 +215,67 @@ class TestTrainModelSelection(unittest.TestCase):
         self.assertEqual(result["test"]["total"], 2)
 
 
+class TestBestCheckpointIsTested(unittest.TestCase):
+    def test_test_split_sees_the_best_validation_epoch_weights(self):
+        """Validation accuracy peaks at epoch 2 of 3; the test run must use epoch-2 weights."""
+        import train as train_module
+        from losses import single_label_classification_loss
+
+        torch.manual_seed(0)
+        model = TinyClassifier()
+        val_l, test_l = CountingLoader(3), CountingLoader(3)
+        train_l = CountingLoader(3)
+        opt = torch.optim.SGD(model.parameters(), lr=0.5)
+        val_accs = iter([0.2, 0.9, 0.5])
+        val_weights, test_weights = [], []
+
+        def fake_eval(m, loader, device, image_size=None):
+            w = m.conv.weight.detach().clone()
+            if loader is val_l:
+                val_weights.append(w)
+                return {"accuracy": next(val_accs), "correct": 0, "total": 1, "skipped": 0}
+            test_weights.append(w)
+            return {"accuracy": 0.0, "correct": 0, "total": 1, "skipped": 0}
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(train_module, "wandb"), \
+                mock.patch.object(train_module, "evaluate_top1", fake_eval):
+            result = train_module.train_model(
+                model, train_l, val_l, test_l, opt, single_label_classification_loss,
+                torch.device("cpu"), epochs=3, checkpoint_pattern=os.path.join(d, "ck_{}.pth"))
+            saved = sorted(os.listdir(d))
+        self.assertEqual(result["best_epoch"], 2)
+        self.assertEqual(result["best_val_accuracy"], 0.9)
+        self.assertEqual(saved, ["ck_1.pth", "ck_2.pth"])  # epoch 3 (0.5) did not save
+        self.assertFalse(torch.equal(val_weights[1], val_weights[2]))  # weights moved after epoch 2
+        self.assertEqual(len(test_weights), 1)
+        self.assertTrue(torch.equal(test_weights[0], val_weights[1]))
+
+
+class TestInputValidation(unittest.TestCase):
+    def test_non_integer_seed_message(self):
+        import importlib
+        import modules.config as config
+        with mock.patch.dict(os.environ, {"UOD_SEED": "abc"}):
+            with self.assertRaisesRegex(ValueError, "UOD_SEED must be an integer"):
+                importlib.reload(config)
+        importlib.reload(config)
+
+    def test_unknown_category_id_names_id_and_image(self):
+        with tempfile.TemporaryDirectory() as d:
+            img, ann = write_coco(d, list(range(1, 11)))
+            data = json.loads(Path(ann).read_text())
+            data["annotations"][0]["category_id"] = 99
+            Path(ann).write_text(json.dumps(data))
+            ds = CocoDetectionWithFilename(img, ann)
+            with self.assertRaisesRegex(ValueError, "category_id 99"):
+                ds[0]
+
+    def test_set_seed_leaves_cudnn_alone_by_default(self):
+        before = torch.backends.cudnn.deterministic
+        set_seed(1)
+        self.assertEqual(torch.backends.cudnn.deterministic, before)
+
+
 if __name__ == "__main__":
     unittest.main()
