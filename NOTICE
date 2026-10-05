@@ -1,0 +1,8 @@
+COMP541_CourseProject
+Copyright 2025 Sarp Vulaş
+
+Original files in this repository are licensed under the Apache License 2.0 (see LICENSE).
+
+TOODHead.py is derived from MMDetection 3.3.0 (mmdet/models/dense_heads/tood_head.py),
+Copyright (c) OpenMMLab, licensed under the Apache License 2.0.
+https://github.com/open-mmlab/mmdetection
