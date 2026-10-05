@@ -10,25 +10,39 @@ from modules.evaluation import evaluate_top1
 from utils import save_model
 
 
+CHECKPOINT_PATTERN = "models/checkpoints/best_model_epoch_{}.pth"
+
+
 def train_model(
     model,
     train_loader,
+    val_loader,
     test_loader,
     optimizer,
     loss_fn,
     device,
     epochs,
-    best_val_accuracy,
+    best_val_accuracy=0.0,
+    checkpoint_pattern=CHECKPOINT_PATTERN,
 ):
     """
     Single-label classification training. Each image gets one label: the class whose boxes
     cover the largest area inside the center crop (see modules/crop.py). Evaluation uses the
     same rule. Cross-entropy is applied to the scale-averaged logits.
 
+    Checkpoints are selected on `val_loader` (a split carved from the training set). After
+    the last epoch the best checkpoint is reloaded and `test_loader` is evaluated once; the
+    test split is never used to choose anything. If no epoch improved on
+    `best_val_accuracy` (so nothing was saved), the final-epoch weights are tested instead.
+
+    Returns a dict: "best_val_accuracy", "best_epoch" (None if nothing was saved),
+    "test" (the evaluate_top1 result on the test split).
+
     Debug options (off by default): UOD_DETECT_ANOMALY=1, UOD_WANDB_WATCH=1.
     """
     if WANDB_WATCH:
         wandb.watch(model, log="all")
+    best_epoch = None
     lr_scheduler = StepLR(optimizer, step_size=2, gamma=0.5)
     if DETECT_ANOMALY:
         torch.autograd.set_detect_anomaly(True)
@@ -76,16 +90,26 @@ def train_model(
         wandb.log({"epoch_loss": avg_epoch_loss, "skipped_images": skipped_images})
         lr_scheduler.step()
 
-        print(f"Evaluating on test dataset after Epoch {epoch+1}...")
-        try:
-            metrics = evaluate_top1(model, test_loader, device, image_size=IMAGE_SIZE)
-            wandb.log({"accuracy": metrics["accuracy"]})
-            best_val_accuracy = save_model(
-                model, epoch + 1, metrics["accuracy"], best_val_accuracy
-            )
-            print(f"[train_model] Updated best_val_accuracy => {best_val_accuracy:.4f}")
-        except Exception as e:
-            print("[train_model] Error during evaluation:", e)
-            traceback.print_exc()
+        print(f"Evaluating on validation split after Epoch {epoch+1}...")
+        metrics = evaluate_top1(model, val_loader, device, image_size=IMAGE_SIZE)
+        wandb.log({"val_accuracy": metrics["accuracy"]})
+        previous_best = best_val_accuracy
+        best_val_accuracy = save_model(
+            model, epoch + 1, metrics["accuracy"], best_val_accuracy, checkpoint_pattern
+        )
+        if best_val_accuracy > previous_best:
+            best_epoch = epoch + 1
+        print(f"[train_model] best_val_accuracy => {best_val_accuracy:.4f}")
 
-    return best_val_accuracy
+    # Test split: once, on the checkpoint chosen by validation accuracy.
+    if best_epoch is not None:
+        state = torch.load(checkpoint_pattern.format(best_epoch), map_location=device)
+        getattr(model, "module", model).load_state_dict(state)
+        print(f"Final test evaluation with the epoch-{best_epoch} checkpoint (best validation)")
+    else:
+        print("No checkpoint was saved (validation accuracy never improved); "
+              "final test evaluation uses the last-epoch weights")
+    test_metrics = evaluate_top1(model, test_loader, device, image_size=IMAGE_SIZE)
+    wandb.log({"test_accuracy": test_metrics["accuracy"]})
+
+    return {"best_val_accuracy": best_val_accuracy, "best_epoch": best_epoch, "test": test_metrics}

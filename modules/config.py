@@ -48,6 +48,21 @@ EPOCHS = 10
 IMAGE_SIZE = (512, 512)  # (Width, Height)
 
 # ===========================
+# Seed and data split
+# ===========================
+
+# Training seed: data order, subset choice, weight initialisation. Override with the
+# UOD_SEED environment variable or `python main.py --seed N`.
+SEED = int(os.environ.get("UOD_SEED", "0"))
+
+# A validation split is carved from the training set. Checkpoints are selected on it; the
+# test split is evaluated once, on the selected checkpoint, at the end of training.
+# The split uses its own fixed seed so it is the same for every training seed.
+VAL_FRACTION = 0.1
+VAL_SPLIT_SEED = 1234
+SUBSET_SIZE = 500  # images drawn from each of the train, validation and test splits
+
+# ===========================
 # Anchor Generation Parameters
 # ===========================
 
