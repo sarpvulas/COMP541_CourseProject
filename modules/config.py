@@ -12,14 +12,23 @@ def load_paths(file_path):
     try:
         with open(file_path, 'r') as f:
             for line in f:
-                key, value = line.strip().split('=')
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                key, value = line.split('=', 1)
                 paths[key.strip()] = value.strip()
     except FileNotFoundError:
         raise FileNotFoundError(f"Path configuration file '{file_path}' not found.")
     return paths
 
-# Load dataset paths from the external text file
-PATHS_FILE = os.path.join(os.path.dirname(__file__), "dataset_paths.txt")
+# Paths file lookup order: $UOD_PATHS_FILE, modules/dataset_paths.txt (git-ignored, yours),
+# then modules/dataset_paths.example.txt (placeholders, so imports and tests work without data).
+_HERE = os.path.dirname(__file__)
+PATHS_FILE = os.environ.get("UOD_PATHS_FILE") or next(
+    (p for p in (os.path.join(_HERE, "dataset_paths.txt"),
+                 os.path.join(_HERE, "dataset_paths.example.txt")) if os.path.exists(p)),
+    os.path.join(_HERE, "dataset_paths.txt"),
+)
 paths = load_paths(PATHS_FILE)
 
 # Dataset Paths
@@ -69,3 +78,14 @@ NUM_CLASSES = 10  # RUOD dataset has 10 classes
 STRIDES = [4, 8, 16, 32, 64]
 
 #STRIDES = [64]
+
+# ===========================
+# Debug switches (all off by default)
+# ===========================
+
+def _env_flag(name):
+    return os.environ.get(name, "0").lower() in ("1", "true", "yes")
+
+DETECT_ANOMALY = _env_flag("UOD_DETECT_ANOMALY")  # torch.autograd.set_detect_anomaly
+WANDB_WATCH = _env_flag("UOD_WANDB_WATCH")        # wandb.watch(model, log="all")
+# UOD_DEBUG=1 enables per-tensor printing and NaN checks in modules/Debug.py
