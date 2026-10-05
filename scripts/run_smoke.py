@@ -4,7 +4,7 @@ Builds 16 train and 10 test images (640x640, flat gray, 1-3 random boxes each, c
 in a temporary folder, points the code at them, and runs main.main() for one epoch.
 It only shows that the train/eval loop runs end to end; the numbers mean nothing.
 Needs the ResNet-50 ImageNet weights (downloaded on first run). Run from anywhere:
-    python scripts/smoke_test.py
+    python scripts/run_smoke.py
 """
 import json, os, random, sys, tempfile
 from pathlib import Path

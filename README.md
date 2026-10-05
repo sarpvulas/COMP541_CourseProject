@@ -97,7 +97,7 @@ EOF
 
 `python main.py` needs RUOD and a Weights & Biases login (`WANDB_MODE=disabled` turns W&B off). It has not been run on RUOD.
 
-Smoke test: `python scripts/smoke_test.py` builds a tiny synthetic COCO dataset in a temp folder (16 train and 10 test images of 640x640, flat gray, 1-3 random boxes each), runs `main.main()` for one epoch on CPU with W&B disabled, and prints the usual training and evaluation lines. In one run it printed `Avg Loss: 2.3501 over 8 batches; skipped 0 images` and `top-1 accuracy: 0.0000 (0/10)`. The data is random, so these numbers only show that the loop runs; shuffling is unseeded, so the loss varies a little between runs. It needs the ResNet-50 ImageNet weights, so it is not part of CI.
+Smoke test: `python scripts/run_smoke.py` builds a tiny synthetic COCO dataset in a temp folder (16 train and 10 test images of 640x640, flat gray, 1-3 random boxes each), runs `main.main()` for one epoch on CPU with W&B disabled, and prints the usual training and evaluation lines. In one run it printed `Avg Loss: 2.3501 over 8 batches; skipped 0 images` and `top-1 accuracy: 0.0000 (0/10)`. The data is random, so these numbers only show that the loop runs; shuffling is unseeded, so the loss varies a little between runs. It needs the ResNet-50 ImageNet weights, so it is not part of CI.
 
 Optional debug switches, all off by default: `UOD_DEBUG=1` (tensor stats and NaN checks in `modules/Debug.py` and in `TOODHead`), `UOD_DETECT_ANOMALY=1`, `UOD_WANDB_WATCH=1`. `UOD_DEBUG` alone does not make `IDM.forward` print; that also needs `debug=True` in the call.
 
