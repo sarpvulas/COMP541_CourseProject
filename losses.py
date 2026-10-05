@@ -1,12 +1,18 @@
 import torch
 import torch.nn as nn
-from matplotlib import pyplot as plt
 import os
-from modules.anchor_utils import decode_boxes
-from torchmetrics.functional.detection.giou import generalized_intersection_over_union
+from modules.anchor_utils import decode_boxes, giou as paired_giou
 import torch.nn.functional as F
 
-import matplotlib.patches as patches
+
+def giou_regression_loss(pred_boxes, gt_boxes):
+    """
+    Mean of (1 - GIoU) over matched pairs: pred_boxes[i] is compared only with gt_boxes[i].
+    Both are (N, 4) in [x1, y1, x2, y2]. Returns 0 (with a graph-free tensor) when N is 0.
+    """
+    if pred_boxes.shape[0] == 0:
+        return pred_boxes.new_zeros(())
+    return (1.0 - paired_giou(pred_boxes, gt_boxes)).mean()
 
 
 def box_iou(boxes1, boxes2):
@@ -61,6 +67,10 @@ def visualize_and_save_debug_image(image, gt_boxes, anchors, output_dir, batch_i
         batch_idx (int): Current batch index.
         img_name (str): Optional image name or identifier for saving files.
     """
+    from matplotlib import pyplot as plt  # imported here so losses.py loads without matplotlib
+    import matplotlib.patches as patches
+
+    fig = None
     # Ensure the output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -110,11 +120,19 @@ def visualize_and_save_debug_image(image, gt_boxes, anchors, output_dir, batch_i
         print(f"[Batch {batch_idx}] Failed to create or save debug plot: {e}")
     finally:
         # Close the figure to free memory
-        plt.close(fig)
+        if fig is not None:
+            plt.close(fig)
 
 
 def detection_loss(cls_scores, bbox_preds, targets, anchors,
                    iou_threshold_pos=0.5, iou_threshold_neg=0.4):
+    """
+    Anchor-based cross-entropy + GIoU loss. Not used by main.py and not a finished loss:
+    the classification term treats every non-positive anchor as class 0 (there is no
+    background class, so class 0 is confused with background) and feeds the scores to
+    CrossEntropyLoss as logits, while TOODHead returns probabilities. The regression term is
+    the matched-pair GIoU loss (`giou_regression_loss`). It is not the TOOD loss.
+    """
     batch_size = cls_scores.size(0)
 
     if len(targets) != batch_size:
@@ -185,8 +203,7 @@ def detection_loss(cls_scores, bbox_preds, targets, anchors,
 
                 print(f"[Batch {b + 1}] Decoded boxes: {decoded_boxes.shape}, Regression targets: {reg_targets.shape}")
 
-                giou = generalized_intersection_over_union(decoded_boxes, reg_targets)
-                reg_loss = (1 - giou).mean()
+                reg_loss = giou_regression_loss(decoded_boxes, reg_targets)
                 print(f"[Batch {b + 1}] Regression loss: {reg_loss.item()}")
             else:
                 reg_loss = torch.tensor(0.0, device=cls_scores.device)
